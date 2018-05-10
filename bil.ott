@@ -210,6 +210,7 @@ terminals :: terminals_ ::=
   | |->				::   :: mapsto					{{ tex \mapsto }}
   | lambda			::   :: lambda					{{ tex \lambda }}
   | ~>				::   :: leadsto					{{ tex \leadsto }}
+  | ~>*				::   :: mleadsto					{{ tex \leadsto^{*} }}
   | <>              ::   :: neq                     {{ tex \neq }}
   | >>              ::   :: lsr                     {{ tex \gg}}
   | ~>>             ::   :: asr                     {{ tex \ggg}}
@@ -652,11 +653,12 @@ defns reduce_stmt :: '' ::=
  defn delta , word |- stmt ~> delta' , word' :: :: stmt :: '' by
 
 
- delta |- e ~> v
+ delta |- e ~>* v
  ----------------------------------------- :: move
  delta,w |- var := e ~> delta[var <- v], w
 
- delta |- e ~> w'
+
+ delta |- e ~>* w'
  ---------------------------------- :: jmp
  delta,w |- jmp e ~> delta, w'
 
@@ -669,29 +671,29 @@ defns reduce_stmt :: '' ::=
  delta,w |- special(str) ~> delta,w
 
 
- delta |- e ~> true
+ delta |- e ~>* true
  delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: ifthen_true
  delta,word |- if (e) seq ~> delta', word'
 
- delta |- e ~> true
+ delta |- e ~>* true
  delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: if_true
  delta,word |- if (e) seq else seq1 ~> delta', word'
 
- delta |- e ~> false
+ delta |- e ~>* false
  delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: if_false
  delta,word |- if (e) seq1 else seq ~> delta', word'
 
 
- delta1 |- e ~> true
+ delta1 |- e ~>* true
  delta1,word1 |- seq ~> delta2,word2,{}
  delta2,word2 |- while (e) seq ~> delta3,word3
  --------------------------------------------- :: while
  delta1,word1 |- while (e) seq ~> delta3,word3
 
- delta |- e ~> false
+ delta |- e ~>* false
  ----------------------------------------- :: while_false
  delta,word |- while (e) seq ~> delta,word
 
@@ -714,3 +716,15 @@ defns reduce_stmt :: '' ::=
 
  ------------------------------------------------------------- :: seq_nil
  delta,word |- {} ~> delta, word, {}
+ 
+defns multistep_exp :: '' ::=
+
+ defn delta |- exp ~>* exp' :: :: mexp :: '' by
+
+ ---------------- :: refl
+ delta |- e ~>* e
+
+ delta |- e1 ~> e2
+ delta |- e2 ~>* e3
+ ------------------ :: reduce
+ delta |- e1 ~>* e3
