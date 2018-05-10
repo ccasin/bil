@@ -406,18 +406,17 @@ defns reduce_exp :: '' ::=
 % LOAD                                              %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
- delta |- e2 ~> v2
- ------------------------------------- :: load_addr
- delta |- e1[e2,ed]:sz ~> e1[v2,ed]:sz
-
-
- delta |- e1 ~> v1
- ------------------------------------- :: load_mem
- delta |- e1[v2,ed]:sz ~> v1[v2,ed]:sz
+ delta |- e2 ~> e2'
+ ------------------------------------- :: load_step_addr
+ delta |- e1[e2,ed]:sz ~> e1[e2',ed]:sz
 
 
- ----------------------------------------------------------- :: load_byte
+ delta |- e1 ~> e1'
+ ------------------------------------- :: load_step_mem
+ delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
+
+
+ ------------------------------------------------------ :: load_byte
  delta |- (v1 with [w,ed]:8 <- num:8)[w,ed']:8 ~> num:8
 
  ------------------------------------------------------------------------------ :: load_un_addr
@@ -447,46 +446,40 @@ defns reduce_exp :: '' ::=
 %% STORE                                             %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+ 
+
+ delta |- e3 ~> e3'
+ ------------------------------------------------------------------------- :: store_step_val
+ delta |- e1 with [e2,ed]:sz <- e3 ~> e1 with [e2,ed] : sz <- e3'
 
 
- delta |- e ~> v
- ------------------------------------------------------------------------- :: store_val
- delta |- e1 with [e2,ed]:sz <- e ~> e1 with [e2,ed] : sz <- v
+ delta |- e2 ~> e2'
+ ------------------------------------------------------------------------- :: store_step_addr
+ delta |- e1 with [e2,ed]:sz <- v3 ~> e1 with [e2',ed] : sz <- v3
 
 
- delta |- e ~> v
- ------------------------------------------------------------------------- :: store_addr
- delta |- e1 with [e,ed]:sz <- val ~> e1 with [v,ed] : sz <- val
-
-
- delta |- e ~> v
- ------------------------------------------------------------------------- :: store_mem
- delta |- e with [v1,ed]:sz <- val ~> v with [v1,ed] : sz <- val
+ delta |- e1 ~> e1'
+ ------------------------------------------------------------------------- :: store_step_mem
+ delta |- e1 with [v2,ed]:sz <- v3 ~> e1' with [v2,ed] : sz <- v3
 
  succ w = w'
- delta |- high:8[w] ~> w1
- delta |- low:(sz-8)[w] ~> w2
- delta |- v with [w,be]:8 <- w1 ~> v'
  -------------------------------------------------------------------- :: store_word_be
- delta |- v with [w,be]:sz <- val ~> v' with [w', be]:(sz-8) <- w2
+ delta |- v with [w,be]:sz <- val ~> (v with [w,be]:8 <- high:8[val]) with [w',be]:(sz-8) <- low:(sz-8)[val]
 
  succ w = w'
- delta |- low:8[w] ~> w1
- delta |- high:(sz-8)[w] ~> w2
- delta |- v with [w,be]:8 <- w1 ~> v'
  -------------------------------------------------------------------- :: store_word_el
- delta |- v with [w,el]:sz <- val ~> v' with [w', el]:(sz-8) <- w2
+ delta |- v with [w,el]:sz <- val ~> (v with [w,el]:8 <- low:8[val]) with [w',el]:(sz-8) <- high:(sz-8)[val]
 
 
 
 
- delta |- e1 ~> v
- ------------------------------------------------ :: let_head
- delta |- let var = e1 in e2 ~> let var = v in e2
+ delta |- e1 ~> e1'
+ ------------------------------------------------ :: let_step
+ delta |- let var = e1 in e2 ~> let var = e1' in e2
 
 
  delta[var <- v] |- e ~> val
- -------------------------------- :: let_body
+ -------------------------------- :: let
  delta |- let var = v in e ~> val
 
 
