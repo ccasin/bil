@@ -385,59 +385,56 @@ defns helpers :: '' ::=
 
 defns reduce_exp :: '' ::=
 
- defn delta |- exp ~> exp' :: :: exp :: '' by
+ defn ( delta , exp ) ~> ( delta' , exp' ) :: :: exp :: '' by
 
 
- -------------------------------------------- :: var_reduce
- delta[var <- v] |- var ~> v
+ --------------------------------------------- :: var_reduce
+ (delta[var<-v] , var) ~> (delta[var<-v], v)
 
 
- delta |- var ~> v
  var <> var'
  -------------------------------------------- :: var_extend
- delta[var' <- v'] |- var ~> v
-
-
+ (delta[var' <- v'],var) ~> (delta,var)
 
  -------------------------------------------- :: var_unknown
-  [] |- id:type ~> unknown [str] : type
+ ([],id:type) ~> ([],unknown [str] : type)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % LOAD                                              %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
- delta |- e2 ~> e2'
+ (delta,e2) ~> (delta',e2')
  ------------------------------------- :: load_step_addr
- delta |- e1[e2,ed]:sz ~> e1[e2',ed]:sz
+ (delta,e1[e2,ed]:sz) ~> (delta',e1[e2',ed]:sz)
 
 
- delta |- e1 ~> e1'
+ (delta,e1) ~> (delta',e1')
  ------------------------------------- :: load_step_mem
- delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
+ (delta,e1[v2,ed]:sz) ~> (delta',e1'[v2,ed]:sz)
 
 
  ------------------------------------------------------ :: load_byte
- delta |- (v1 with [w,ed]:8 <- num:8)[w,ed']:8 ~> num:8
+ (delta,(v1 with [w,ed]:8 <- num:8)[w,ed']:8) ~> (delta,num:8)
 
  ------------------------------------------------------------------------------ :: load_un_addr
- delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:imm<8>
+ (delta,(v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8) ~> (delta,unknown[str]:imm<8>)
 
 
 
  w1 <> w2
  ---------------------------------------------------------- :: load_rec
- delta |- (v1 with [w1,ed]:8 <- v3)[w2,ed]:8 ~> v1[w2,ed]:8
+ (delta, (v1 with [w1,ed]:8 <- v3)[w2,ed]:8) ~> (delta,v1[w2,ed]:8)
 
  ---------------------------------------------------------- :: load_un_mem
- delta |- unknown[str]: mem<nat,sz> ~> unknown[str]:imm<sz>
+ (delta, unknown[str]: mem<nat,sz>) ~> (delta, unknown[str]:imm<sz>)
 
  succ w = w'
  --------------------------------------------------- :: load_word_be
- delta |- v[w,be]:sz ~> v[w,be]:8 @ v[w', be]:(sz-8)
+ (delta, v[w,be]:sz) ~> (delta, v[w,be]:8 @ v[w', be]:(sz-8))
 
  succ w = w'
  --------------------------------------------------- :: load_word_el
- delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ v[w,be]:8
+ (delta, v[w,el]:sz) ~> (delta, v[w',el]:(sz-8) @ v[w,be]:8)
 
 
 
@@ -448,197 +445,197 @@ defns reduce_exp :: '' ::=
 
  
 
- delta |- e3 ~> e3'
+ (delta,e3) ~> (delta',e3')
  ------------------------------------------------------------------------- :: store_step_val
- delta |- e1 with [e2,ed]:sz <- e3 ~> e1 with [e2,ed] : sz <- e3'
+ (delta, e1 with [e2,ed]:sz <- e3) ~> (delta', e1 with [e2,ed] : sz <- e3')
 
 
- delta |- e2 ~> e2'
+ (delta,e2) ~> (delta',e2')
  ------------------------------------------------------------------------- :: store_step_addr
- delta |- e1 with [e2,ed]:sz <- v3 ~> e1 with [e2',ed] : sz <- v3
+ (delta, e1 with [e2,ed]:sz <- v3) ~> (delta', e1 with [e2',ed] : sz <- v3)
 
 
- delta |- e1 ~> e1'
+ (delta, e1) ~> (delta', e1')
  ------------------------------------------------------------------------- :: store_step_mem
- delta |- e1 with [v2,ed]:sz <- v3 ~> e1' with [v2,ed] : sz <- v3
+ (delta, e1 with [v2,ed]:sz <- v3) ~> (delta', e1' with [v2,ed] : sz <- v3)
 
- succ w = w'
+ succ w = w' 
  -------------------------------------------------------------------- :: store_word_be
- delta |- v with [w,be]:sz <- val ~> (v with [w,be]:8 <- high:8[val]) with [w',be]:(sz-8) <- low:(sz-8)[val]
+ (delta, v with [w,be]:sz <- val) ~> (delta, (v with [w,be]:8 <- high:8[val]) with [w',be]:(sz-8) <- low:(sz-8)[val])
 
  succ w = w'
  -------------------------------------------------------------------- :: store_word_el
- delta |- v with [w,el]:sz <- val ~> (v with [w,el]:8 <- low:8[val]) with [w',el]:(sz-8) <- high:(sz-8)[val]
+ (delta, v with [w,el]:sz <- val) ~> (delta, (v with [w,el]:8 <- low:8[val]) with [w',el]:(sz-8) <- high:(sz-8)[val])
 
 
-
-
- delta |- e1 ~> e1'
+ (delta, e1) ~> (delta', e1')
  ------------------------------------------------ :: let_step
- delta |- let var = e1 in e2 ~> let var = e1' in e2
+ (delta, let var = e1 in e2) ~> (delta', let var = e1' in e2)
 
 
- delta[var <- v] |- e ~> val
- -------------------------------- :: let
- delta |- let var = v in e ~> val
+ ------------------------------------------------- :: let
+ (delta, let var = v in e) ~> (delta[var <- v], e)
 
 
- delta |- e1 ~> true
- ------------------------------------ :: ite_true
- delta |- if e1 then e2 else e3 ~> e2
+ (delta, e1) ~> (delta', e1')
+ ------------------------------------------------------------------ :: ite_step
+ (delta, if e1 then e2 else e3) ~> (delta', if e1' then e2 else e3) 
 
- delta |- e1 ~> false
- ------------------------------------ :: ite_false
- delta |- if e1 then e2 else e3 ~> e3
+ ----------------------------------------------- :: ite_true
+ (delta, if true then e2 else e3) ~> (delta, e2)
 
-
- delta |- e2 ~> v
- ------------------------------------- :: bop_rhs
- delta |- e1 bop e2 ~> e1 bop v
-
- delta |- e1 ~> v
- ------------------------------------- :: bop_lhs
- delta |- e1 bop v' ~> v bop v'
+ 
+ ------------------------------------------------ :: ite_false
+ (delta, if false then e2 else e3) ~> (delta, e3)
 
 
- ----------------------------------------------- :: bop_unk_rhs
- delta |- e bop unknown[str]:t ~> unknown[str]:t
+ (delta, e2) ~> (delta', e2')
+ ------------------------------------------ :: bop_rhs
+ (delta, e1 bop e2) ~> (delta', e1 bop e2')
 
- ----------------------------------------------- :: bop_unk_lhs
- delta |- unknown[str]:t bop e ~> unknown[str]:t
-
-
- ---------------------------------------- :: plus
- delta |- w1 + w2 ~> w1 .+ w2
-
- ---------------------------------------- :: minus
- delta |- w1 - w2 ~> w1 .- w2
+ (delta, e1) ~> (delta', e1')
+ ----------------------------------------- :: bop_lhs
+ (delta, e1 bop v2) ~> (delta',e1' bop v2)
 
 
- ---------------------------------------- :: times
- delta |- w1 * w2 ~> w1 .* w2
+ -------------------------------------------------------- :: bop_unk_rhs
+ (delta, e bop unknown[str]:t) ~> (delta, unknown[str]:t)
+
+ -------------------------------------------------------- :: bop_unk_lhs
+ (delta, unknown[str]:t bop e) ~> (delta, unknown[str]:t)
 
 
- ---------------------------------------- :: div
- delta |- w1 / w2 ~> w1 ./ w2
+-------------------------------------- :: plus
+ (delta, w1 + w2) ~> (delta, w1 .+ w2)
+
+ -------------------------------------- :: minus
+ (delta, w1 - w2) ~> (delta, w1 .- w2)
 
 
- ----------------------------------------------- :: sdiv
- delta |- w1 /$ w2 ~> w1 ./$ w2
+ ------------------------------------- :: times
+ (delta, w1 * w2) ~> (delta, w1 .* w2)
 
 
- ---------------------------------------- :: mod
- delta |- w1 % w2 ~> w1 .% w2
+ ------------------------------------- :: div
+ (delta, w1 / w2) ~> (delta, w1 ./ w2)
+
+
+ --------------------------------------- :: sdiv
+ (delta, w1 /$ w2) ~> (delta, w1 ./$ w2)
+
+
+ ------------------------------------- :: mod
+ (delta, w1 % w2) ~> (delta, w1 .% w2)
 
 
  ---------------------------------------- :: smod
- delta |- w1 %$ w2 ~> w1 .%$ w2
+ (delta, w1 %$ w2) ~> (delta, w1 .%$ w2)
 
 
  ----------------------------------------------- :: lsl
- delta |- w1 << w2 ~> w1 .<< w2
+ (delta, w1 << w2) ~> (delta, w1 .<< w2)
 
  ----------------------------------------------- :: lsr
- delta |- w1 >> w2 ~> w1 .>> w2
+ (delta, w1 >> w2) ~> (delta, w1 .>> w2)
 
  ----------------------------------------------- :: asr
- delta |- w1 ~>> w2 ~> w1 .~>> w2
+ (delta, w1 ~>> w2) ~> (delta, w1 .~>> w2)
 
 
  ----------------------------------------------- :: land
- delta |- w1 & w2 ~> w1 .& w2
+ (delta, w1 & w2) ~> (delta, w1 .& w2)
 
  ----------------------------------------------- :: lor
- delta |- w1 | w2 ~> w1 .| w2
+ (delta, w1 | w2) ~> (delta, w1 .| w2)
 
  ----------------------------------------------- :: xor
- delta |- w1 xor w2 ~> w1 .xor w2
+ (delta, w1 xor w2) ~> (delta, w1 .xor w2)
 
 
  ----------------------------------------------- :: eq
- delta |- w = w ~> true
+ (delta, w = w) ~> (delta, true)
 
 
  ----------------------------------------------- :: neq
- delta |- w <> w ~> false
+ (delta, w <> w) ~> (delta, false)
 
 
  ----------------------------------------------- :: less
- delta |- w1 < w2 ~> w1 .< w2
+ (delta, w1 < w2) ~> (delta, w1 .< w2)
 
 
- delta |- w1 <> w2 ~> w
+
  ----------------------------------------------- :: less_eq
- delta |- w1 <= w2 ~> w & (w1 < w2)
+ (delta, w1 <= w2) ~> (delta, (w1 < w2) | (w1 = w2))
 
 
 
  ----------------------------------------------- :: signed_less
- delta |- w1 <$ w2 ~> w1 .<$ w2
+ (delta, w1 <$ w2) ~> (delta, w1 .<$ w2)
 
- delta |- w1 <> w2 ~> w
- ----------------------------------------------- :: signed_less_eq
- delta |- w1 <=$ w2 ~> w & (w1 <$ w2)
 
- delta |- e ~> v
+ ----------------------------------------------------- :: signed_less_eq
+ (delta, w1 <=$ w2) ~> (delta, (w1 = w2) & (w1 <$ w2))
+
+ (delta, e) ~> (delta', e')
  ---------------------------------------- :: uop
- delta |- uop e ~> uop v
+ (delta, uop e) ~> (delta', uop e')
 
  ---------------------------------------- :: not_true
- delta |- ~true ~> false
+ (delta, ~true) ~> (delta, false)
 
 
  ---------------------------------------- :: not_false
- delta |- ~false ~> true
+ (delta, ~false) ~> (delta, true)
 
 
- delta |- e2 ~> v2
+ (delta, e2) ~> (delta', e2')
  ---------------------------------------- :: concat_rhs
- delta |- e1 @ e2 ~> e1 @ v2
+ (delta, e1 @ e2) ~> (delta', e1 @ e2')
 
 
- delta |- e1 ~> v1
+ (delta, e1) ~> (delta', e1')
  ---------------------------------------- :: concat_lhs
- delta |- e1 @ v2 ~> v1 @ v2
+ (delta, e1 @ v2) ~> (delta, e1' @ v2)
 
  ---------------------------------------------- :: concat_lhs_un
- delta |- unknown[str]:t @ v2 ~> unknown[str]:t
+ (delta, unknown[str]:t @ v2) ~> (delta, unknown[str]:t)
 
  ---------------------------------------------- :: concat_rhs_un
- delta |- v1 @ unknown[str]:t ~> unknown[str]:t
+ (delta, v1 @ unknown[str]:t) ~> (delta, unknown[str]:t)
 
  ---------------------------------------- :: concat
- delta |- w1 @ w2 ~> w1 .@ w2
+ (delta, w1 @ w2) ~> (delta, w1 .@ w2)
 
- delta |- e ~> v
+ (delta,e) ~> (delta', e')
  ------------------------------------------------- :: extract_reduce
- delta |- extract:sz1:sz2[e] ~> extract:sz1:sz2[v]
+ (delta, extract:sz1:sz2[e]) ~> (delta', extract:sz1:sz2[e'])
 
 
  ---------------------------------------------------------- :: extract_un
- delta |- extract:sz1:sz2[unknown[str]:t] ~> unknown[str]:t
+ (delta, extract:sz1:sz2[unknown[str]:t]) ~> (delta, unknown[str]:t)
 
  ------------------------------------------------------ :: extract
- delta |- extract:sz1:sz2[w] ~> ext w ~hi:sz1 ~lo:sz2
+ (delta, extract:sz1:sz2[w]) ~> (delta, ext w ~hi:sz1 ~lo:sz2)
 
- delta |- e ~> v
+ (delta, e) ~> (delta', e')
  --------------------------------- :: cast_reduce
- delta |- cast:sz[e] ~> cast:sz[v]
+ (delta, cast:sz[e]) ~> (delta', cast:sz[e'])
 
 
  -------------------------------------------- :: cast_low
- delta |- low:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
+ (delta, low:sz[w]) ~> (delta, ext w ~hi:(sz-1) ~lo:0)
 
 
  ----------------------------------------------------------- :: cast_high
- delta |- high:sz[num:sz'] ~> ext num:sz' ~hi:sz' ~lo:(sz'-sz)
+ (delta, high:sz[num:sz']) ~> (delta, ext num:sz' ~hi:sz' ~lo:(sz'-sz))
 
 
  -------------------------------------------- :: cast_signed
- delta |- signed:sz[w] ~> exts w ~hi:(sz-1) ~lo:0
+ (delta, signed:sz[w]) ~> (delta, exts w ~hi:(sz-1) ~lo:0)
 
  -------------------------------------------- :: cast_unsigned
- delta |- unsigned:sz[w] ~> low:sz[w]
+ (delta, unsigned:sz[w]) ~> (delta, low:sz[w])
 
 
 defns reduce_stmt :: '' ::=
