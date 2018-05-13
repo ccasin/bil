@@ -4,6 +4,9 @@ OTT_FLAGS = -tex_wrap false
 
 all : bil.pdf
 
+coq : bil.ott Makefile
+	ott $(OTT_FLAGS) bil.ott -o foo.v
+
 bil.pdf : bil.ott bil.tex Makefile
 	ott $(OTT_FLAGS) bil.ott -o ott.tex
 	$(LATEX) bil.tex
