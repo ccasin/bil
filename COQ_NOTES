@@ -1,0 +1,13 @@
+- Eliminated "S" and "M" designation from many productions, because this
+  requires us to translate them away in Coq, but no obvious
+  translation was available.
+
+  Did this for insn, seq (where we do want a list form in coq, which
+  is what gets generated without "S"), and var.  Also for all of "val"
+
+  Also for the "ifthen" production of statements.  This could be
+  syntax sugar if we could translate it away to "if e seq else nop",
+  but there's no nop or sequence of instructions equivalent to nop in
+  the current statement grammar.  Probably nop should be added?
+
+- 
