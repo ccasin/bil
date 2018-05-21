@@ -1,10 +1,10 @@
 embed
  {{ coq Require Import String. }}
 
-indexvar index, m, n ::= {{ com subscripts}} {{ coq nat }}
-metavar id ::= {{ com a literal for variable}} {{ coq nat }}
+indexvar index, m, n ::= {{ com subscripts }} {{ coq nat }}
+metavar id ::= {{ com a literal for variable }} {{ coq nat }}
 metavar num  ::= {{ com number literal }} {{ coq nat }}
-metavar string,str ::= {{ com quoted string literal }} {{ coq string }}
+metavar string , str ::= {{ com quoted string literal }} {{ coq string }}
 
 
 embed
@@ -53,7 +53,7 @@ grammar
    {{ com -- perform an unary operation on $e_1$}}
    | cast : nat [ e ]                           ::      :: cast
    {{ com -- extract or extend bitvector $e$ }}
-   | let id = e1 in e2                         ::      :: let  (+ bind id in e2 +)
+   | let var = e1 in e2                         ::      :: let  (+ bind var in e2 +)
    {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
    {{ com -- unknown or undefined value of a given $type$ }}
@@ -67,8 +67,9 @@ grammar
    {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
    {{ coq subst_exp_exp [[e1]] [[var]] [[e2]] }}
 
- var :: var_ ::=
+ var :: var_ ::= {{ coq (nat * type) }}
    | id : type                                  ::      :: var
+     {{ coq ([[id]],[[type]]) }}
 
  val,v :: val_ ::=
    | word                                      ::     :: imm
@@ -266,6 +267,15 @@ terminals :: terminals_ ::=
 
 subrules
   val <:: exp
+
+embed
+{{ coq
+Definition eq_var (v1 v2:var) : bool :=
+  match (v1,v2) with
+  | ((n1,_),(n2,_)) => Nat.eqb n1 n2
+  end.
+}}
+
 
 substitutions
   single exp var :: subst_exp

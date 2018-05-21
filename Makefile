@@ -1,11 +1,11 @@
 LATEX = pdflatex
 
-OTT_FLAGS = -tex_wrap false -coq_lngen true
+OTT_FLAGS = -tex_wrap false
 
 all : bil.pdf
 
 coq : bil.ott Makefile
-	ott $(OTT_FLAGS) bil.ott -o bil.v
+	ott $(OTT_FLAGS) bil.ott -o bil_gen.v
 
 bil.pdf : bil.ott bil.tex Makefile
 	ott $(OTT_FLAGS) bil.ott -o ott.tex
