@@ -44,8 +44,9 @@ Inductive bop : Set :=
 
 Definition var : Set := (nat * typ).
 
-(* XXX to be replaced *)
-Definition word : Set := nat.
+(* First nat is value, second nat is width (in bits).
+   To be replaced with better notion of bits, probably from bedrock library. *)
+Definition word : Set := (nat * nat).
 
 Inductive endian : Set := 
  | endian_little : endian (* little endian *)
