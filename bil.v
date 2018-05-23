@@ -5,9 +5,6 @@ Require Import Bool.
 Require Import List.
 Require Import String.
 
-Definition num    := nat. (*r number literal *)
-Axiom undefined_word : num.
-
 Inductive typ : Set := 
  | typ_imm (sz:nat)            (* immediate of size $sz$ *)
  | typ_mem (sz1:nat) (sz2:nat) (* memory with address size sz1 and element size sz2 *)
@@ -114,102 +111,81 @@ Inductive wf_delta : delta -> Prop :=
  | wfd_nil  : wf_delta nil
  | wfd_cons : forall v e d, val e -> wf_delta d -> wf_delta ((v,e)::d).
 
-
 (* defns typing_exp *)
 Inductive typ_exp : exp -> typ -> Prop :=    (* defn typ_exp *)
- | t_var : forall (n:nat) (t:typ),
+ | te_var : forall (n:nat) (t:typ),
      typ_exp (exp_var (n,t)) t
-.
- | t_int : forall (num5:num) (sz:nat),
-     typ_exp (exp_int  num5 ) (typ_imm sz)
- | t_true : 
-     typ_exp (exp_int  1 ) (typ_imm  1 )
- | t_false : 
-     typ_exp (exp_int  0 ) (typ_imm  1 )
- | t_load : forall (e1 e2:exp) (ed:endian) (sz nat5:nat),
-     typ_exp e1 (typ_mem nat5 sz) ->
-     typ_exp e2 (typ_imm nat5) ->
-     typ_exp (exp_load e1 e2 ed sz) (typ_imm sz)
- | t_store : forall (e1 e2:exp) (ed:endian) (sz:nat) (e3:exp) (nat5:nat),
-     typ_exp e1 (typ_mem nat5 sz) ->
-     typ_exp e2 (typ_imm nat5) ->
-     typ_exp e3 (typ_imm sz) ->
-     typ_exp (exp_store e1 e2 ed sz e3) (typ_mem nat5 sz)
- | t_bop : forall (e1:exp) (bop5:bop) (e2:exp) (sz:nat),
+ | te_int : forall (val sz:nat),
+     typ_exp (exp_imm (val,sz)) (typ_imm sz)
+ | te_load : forall (e1 e2:exp) (endn:endian) (sz_addr sz_el:nat),
+     typ_exp e1 (typ_mem sz_addr sz_el) ->
+     typ_exp e2 (typ_imm sz_addr) ->
+     typ_exp (exp_load e1 e2 endn sz_el) (typ_imm sz_el)
+ | te_store : forall (e1 e2:exp) (endn:endian) (sz_addr sz_el:nat) (e3:exp),
+     typ_exp e1 (typ_mem sz_addr sz_el) ->
+     typ_exp e2 (typ_imm sz_addr) ->
+     typ_exp e3 (typ_imm sz_el) ->
+     typ_exp (exp_store e1 e2 endn sz_el e3) (typ_mem sz_addr sz_el)
+ | te_bop : forall (e1:exp) (b:bop) (e2:exp) (sz:nat),
      typ_exp e1 (typ_imm sz) ->
      typ_exp e2 (typ_imm sz) ->
-     typ_exp (exp_binop e1 bop5 e2) (typ_imm sz)
- | t_uop : forall (uop5:uop) (e1:exp) (sz:nat),
+     typ_exp (exp_binop e1 b e2) (typ_imm sz)
+ | te_uop : forall (u:uop) (e1:exp) (sz:nat),
      typ_exp e1 (typ_imm sz) ->
-     typ_exp (exp_unop uop5 e1) (typ_imm sz)
- | t_cast : forall (cast5:cast) (sz:nat) (e:exp) (nat5:nat),
-     typ_exp e (typ_imm nat5) ->
-     typ_exp (exp_cast cast5 sz e) (typ_imm sz)
- | t_let : forall (var5:var) (e1 e2:exp) (t' t:typ),
-     typ_exp (exp_var var5) t ->
+     typ_exp (exp_unop u e1) (typ_imm sz)
+ | te_cast : forall (cst:cast) (sz sz':nat) (e:exp),
+     typ_exp e (typ_imm sz) ->
+     typ_exp (exp_cast cst sz' e) (typ_imm sz')
+ | te_let : forall (e1 e2:exp) (t' t:typ),
      typ_exp e1 t ->
      typ_exp e2 t' ->
-     typ_exp (exp_let var5 e1 e2) t'
- | t_unknown : forall (str:string) (t:typ),
+     typ_exp (exp_let t e1 e2) t'
+ | te_unknown : forall (str:string) (t:typ),
      typ_exp (exp_unk str t) t
- | t_ite : forall (e1 e2 e3:exp) (t:typ),
-     typ_exp e1 (typ_imm  1 ) ->
+ | te_ite : forall (e1 e2 e3:exp) (t:typ),
+     typ_exp e1 (typ_imm 1) ->
      typ_exp e2 t ->
      typ_exp e3 t ->
      typ_exp (exp_ite e1 e2 e3) t
- | t_extract : forall (sz1 sz2:nat) (e:exp) (sz:nat),
+ | te_extract : forall (sz sz1 sz2:nat) (e:exp),
      typ_exp e (typ_imm sz) ->
-      ( sz1  >=  sz2 )  ->
-     typ_exp (exp_ext sz1 sz2 e) (typ_imm   (  sz1  -  sz2  )   +   1  )
- | t_concat : forall (e1 e2:exp) (sz1 sz2:nat),
+     (sz1 >= sz2)  ->
+     typ_exp (exp_ext sz1 sz2 e) (typ_imm ((sz1 - sz2) + 1))
+ | te_concat : forall (e1 e2:exp) (sz1 sz2:nat),
      typ_exp e1 (typ_imm sz1) ->
      typ_exp e2 (typ_imm sz2) ->
-     typ_exp (exp_concat e1 e2) (typ_imm  sz1  +  sz2 ).
-(** definitions *)
+     typ_exp (exp_concat e1 e2) (typ_imm (sz1 + sz2))
+.
 
-(* defns typing_stmt *)
-Inductive typ_seq : bil -> Prop :=    (* defn typ_seq *)
- | t_seq_one : forall (stmt5:stmt),
-     typ_stmt stmt5 ->
-     typ_seq (seq_many (Cons_list_stmt stmt5 Nil_list_stmt))
- | t_seq_two : forall (s1 s2:stmt),
-     typ_stmt s1 ->
-     typ_stmt s2 ->
-     typ_seq (seq_many ((app_list_stmt (Cons_list_stmt s1 Nil_list_stmt) (app_list_stmt (Cons_list_stmt s2 Nil_list_stmt) Nil_list_stmt))))
- | t_seq_rec : forall (s_list:list_stmt) (UNK: NUM 1:UNK_CTP) (t101 t102:stmt),
-          nth_list_stmt (1 - 2) s_list = Some t101 ->
-     nth_list_stmt (1 - 2) s_list = Some t102 ->
-typ_stmt t101 ->
-     typ_seq (seq_many s_list) ->
-     typ_seq (seq_many ((app_list_stmt (Cons_list_stmt t102 Nil_list_stmt) (app_list_stmt s_list Nil_list_stmt))))
-with typ_stmt : stmt -> Prop :=    (* defn typ_stmt *)
- | t_move : forall (var5:var) (exp5:exp) (t:typ),
-     typ_exp (exp_var var5) t ->
-     typ_exp exp5 t ->
-     typ_stmt (stmt_move var5 exp5)
- | t_jmp : forall (exp5:exp) (nat5:nat),
-     typ_exp exp5 (typ_imm nat5) ->
-     typ_stmt (stmt_jump exp5)
- | t_cpuexn : forall (num5:num),
-     typ_stmt (stmt_cpuexn num5)
+Inductive typ_stmt : stmt -> Prop :=
+ | t_move : forall (x:var) (e:exp) (t:typ),
+     typ_exp (exp_var x) t ->
+     typ_exp e t ->
+     typ_stmt (stmt_move x e)
+ | t_jmp : forall (e:exp) (sz:nat),
+     typ_exp e (typ_imm sz) ->
+     typ_stmt (stmt_jump e)
+ | t_cpuexn : forall (n:nat),
+     typ_stmt (stmt_cpuexn n)
  | t_special : forall (str:string),
      typ_stmt (stmt_special str)
- | t_while : forall (e:exp) (seq:bil),
-     typ_exp e (typ_imm  1 ) ->
-     typ_seq seq ->
+ | t_while : forall (e:exp) (seq:stmts),
+     typ_exp e (typ_imm 1) ->
+     Forall typ_stmt seq ->
      typ_stmt (stmt_while e seq)
- | t_ifthen : forall (e:exp) (seq:bil),
-     typ_exp e (typ_imm  1 ) ->
-     typ_seq seq ->
+ | t_ifthen : forall (e:exp) (seq:stmts),
+     typ_exp e (typ_imm 1) ->
+     Forall typ_stmt seq ->
      typ_stmt (stmt_ifthen e seq)
- | t_if : forall (e:exp) (seq1 seq2:bil),
-     typ_exp e (typ_imm  1 ) ->
-     typ_seq seq1 ->
-     typ_seq seq2 ->
-     typ_stmt (stmt_if e seq1 seq2).
-(** definitions *)
+ | t_if : forall (e:exp) (seq1 seq2:stmts),
+     typ_exp e (typ_imm 1) ->
+     Forall typ_stmt seq1 ->
+     Forall typ_stmt seq2 ->
+     typ_stmt (stmt_if e seq1 seq2)
+.
 
-(* defns program *)
+(* For now we comment out iterated statement execution, which requires a clearer notion of decode. *)
+(*
 Inductive step : delta -> word -> var -> delta -> word -> var -> Prop :=    (* defn step *)
  | step : forall (delta5:delta) (w:word) (var5:var) (delta':delta) (w3 w1:word) (bil5:bil) (w2:word),
      is_delta_of_delta delta5 ->
@@ -220,13 +196,10 @@ Inductive step : delta -> word -> var -> delta -> word -> var -> Prop :=    (* d
 with decode : insn -> Prop :=    (* defn decode *)
  | decode : forall (insn5:insn),
      decode insn5.
-(** definitions *)
+ *)
 
-(* defns helpers *)
-Inductive succ : word -> exp -> Prop :=    (* defn succ *)
- | succ : forall (num5:num) (sz sz1:nat),
-     succ  num5  (exp_int   num5   +   1  ).
-(** definitions *)
+Definition succ (w : word) :=
+  let (val,sz) := w in (val+1,sz).
 
 (* defns reduce_exp *)
 Inductive exp : delta -> exp -> exp -> Prop :=    (* defn exp *)
