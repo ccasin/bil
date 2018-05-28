@@ -91,7 +91,7 @@ Inductive stmt : Set :=
 
 Definition stmts : Set := list stmt.
 
-Definition delta : Set := list (var*exp).
+Definition delta : Set := list exp.
 
 Inductive instruction : Set := 
  | insn (addr:word) (sz:word) (seq:stmts)
@@ -107,75 +107,75 @@ Inductive val : exp -> Prop :=
 
 Inductive wf_delta : delta -> Prop :=
  | wfd_nil  : wf_delta nil
- | wfd_cons : forall v e d, val e -> wf_delta d -> wf_delta ((v,e)::d).
+ | wfd_cons : forall e d, val e -> wf_delta d -> wf_delta (e::d).
 
 (* defns typing_exp *)
 Inductive typ_exp : exp -> typ -> Prop :=    (* defn typ_exp *)
- | te_var : forall (n:nat) (t:typ),
+ | etyp_var : forall (n:nat) (t:typ),
      typ_exp (exp_var (n,t)) t
- | te_int : forall (val sz:nat),
+ | etyp_int : forall (val sz:nat),
      typ_exp (exp_imm (val,sz)) (typ_imm sz)
- | te_load : forall (e1 e2:exp) (endn:endian) (sz_addr sz_el:nat),
+ | etyp_load : forall (e1 e2:exp) (endn:endian) (sz_addr sz_el:nat),
      typ_exp e1 (typ_mem sz_addr sz_el) ->
      typ_exp e2 (typ_imm sz_addr) ->
      typ_exp (exp_load e1 e2 endn sz_el) (typ_imm sz_el)
- | te_store : forall (e1 e2:exp) (endn:endian) (sz_addr sz_el:nat) (e3:exp),
+ | etyp_store : forall (e1 e2:exp) (endn:endian) (sz_addr sz_el:nat) (e3:exp),
      typ_exp e1 (typ_mem sz_addr sz_el) ->
      typ_exp e2 (typ_imm sz_addr) ->
      typ_exp e3 (typ_imm sz_el) ->
      typ_exp (exp_store e1 e2 endn sz_el e3) (typ_mem sz_addr sz_el)
- | te_bop : forall (e1:exp) (b:bop) (e2:exp) (sz:nat),
+ | etyp_bop : forall (e1:exp) (b:bop) (e2:exp) (sz:nat),
      typ_exp e1 (typ_imm sz) ->
      typ_exp e2 (typ_imm sz) ->
      typ_exp (exp_binop e1 b e2) (typ_imm sz)
- | te_uop : forall (u:uop) (e1:exp) (sz:nat),
+ | etyp_uop : forall (u:uop) (e1:exp) (sz:nat),
      typ_exp e1 (typ_imm sz) ->
      typ_exp (exp_unop u e1) (typ_imm sz)
- | te_cast : forall (cst:cast) (sz sz':nat) (e:exp),
+ | etyp_cast : forall (cst:cast) (sz sz':nat) (e:exp),
      typ_exp e (typ_imm sz) ->
      typ_exp (exp_cast cst sz' e) (typ_imm sz')
- | te_let : forall (e1 e2:exp) (t' t:typ),
+ | etyp_let : forall (e1 e2:exp) (t' t:typ),
      typ_exp e1 t ->
      typ_exp e2 t' ->
      typ_exp (exp_let t e1 e2) t'
- | te_unknown : forall (str:string) (t:typ),
+ | etyp_unknown : forall (str:string) (t:typ),
      typ_exp (exp_unk str t) t
- | te_ite : forall (e1 e2 e3:exp) (t:typ),
+ | etyp_ite : forall (e1 e2 e3:exp) (t:typ),
      typ_exp e1 (typ_imm 1) ->
      typ_exp e2 t ->
      typ_exp e3 t ->
      typ_exp (exp_ite e1 e2 e3) t
- | te_extract : forall (sz sz1 sz2:nat) (e:exp),
+ | etyp_extract : forall (sz sz1 sz2:nat) (e:exp),
      typ_exp e (typ_imm sz) ->
      (sz1 >= sz2)  ->
      typ_exp (exp_ext sz1 sz2 e) (typ_imm ((sz1 - sz2) + 1))
- | te_concat : forall (e1 e2:exp) (sz1 sz2:nat),
+ | etyp_concat : forall (e1 e2:exp) (sz1 sz2:nat),
      typ_exp e1 (typ_imm sz1) ->
      typ_exp e2 (typ_imm sz2) ->
      typ_exp (exp_concat e1 e2) (typ_imm (sz1 + sz2))
 .
 
 Inductive typ_stmt : stmt -> Prop :=
- | ts_move : forall (x:var) (e:exp) (t:typ),
+ | styp_move : forall (x:var) (e:exp) (t:typ),
      typ_exp (exp_var x) t ->
      typ_exp e t ->
      typ_stmt (stmt_move x e)
- | ts_jmp : forall (e:exp) (sz:nat),
+ | styp_jmp : forall (e:exp) (sz:nat),
      typ_exp e (typ_imm sz) ->
      typ_stmt (stmt_jump e)
- | ts_cpuexn : forall (n:nat),
+ | styp_cpuexn : forall (n:nat),
      typ_stmt (stmt_cpuexn n)
- | ts_special : forall (str:string),
+ | styp_special : forall (str:string),
      typ_stmt (stmt_special str)
- | ts_while : forall (e:exp) (seq:stmts),
+ | styp_while : forall (e:exp) (seq:stmts),
      typ_exp e (typ_imm 1) ->
      Forall typ_stmt seq ->
      typ_stmt (stmt_while e seq)
- | ts_ifthen : forall (e:exp) (seq:stmts),
+ | styp_ifthen : forall (e:exp) (seq:stmts),
      typ_exp e (typ_imm 1) ->
      Forall typ_stmt seq ->
      typ_stmt (stmt_ifthen e seq)
- | ts_if : forall (e:exp) (seq1 seq2:stmts),
+ | styp_if : forall (e:exp) (seq1 seq2:stmts),
      typ_exp e (typ_imm 1) ->
      Forall typ_stmt seq1 ->
      Forall typ_stmt seq2 ->
@@ -200,11 +200,12 @@ Definition succ (w : word) :=
   let (val,sz) := w in (val+1,sz).
 
 Inductive step_exp : delta -> exp -> exp -> Prop :=
- | var_in : forall (delta5:delta) (var5:var) (v:exp),
+ | estep_var_in : forall (d:delta) (var5:var) (v:exp),
      is_delta_of_delta delta5 ->
      is_val_of_exp v ->
       In ( var5 , v )  delta5  ->
-     exp delta5 (exp_var var5) v
+      exp delta5 (exp_var var5) v
+.
  | var_unknown : forall (delta5:delta) (id5:id) (typ5:typ) (str:string),
      is_delta_of_delta delta5 ->
       not (In   ( id5 , typ5 )    dom(delta)  ->
