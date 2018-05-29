@@ -91,7 +91,7 @@ Inductive stmt : Set :=
 
 Definition stmts : Set := list stmt.
 
-Definition delta : Set := list exp.
+Definition delta : Set := list (typ * exp).
 
 Inductive instruction : Set := 
  | insn (addr:word) (sz:word) (seq:stmts)
@@ -104,10 +104,6 @@ Inductive val : exp -> Prop :=
         -> val (exp_store e1 e2 endn sz e3)
  | val_unk : forall s t, val (exp_unk s t)
 .
-
-Inductive wf_delta : delta -> Prop :=
- | wfd_nil  : wf_delta nil
- | wfd_cons : forall e d, val e -> wf_delta d -> wf_delta (e::d).
 
 (* defns typing_exp *)
 Inductive typ_exp : exp -> typ -> Prop :=    (* defn typ_exp *)
@@ -155,6 +151,14 @@ Inductive typ_exp : exp -> typ -> Prop :=    (* defn typ_exp *)
      typ_exp (exp_concat e1 e2) (typ_imm (sz1 + sz2))
 .
 
+Inductive typ_delta : delta -> Prop :=
+ | dtyp_nil  : typ_delta nil
+ | dtyp_cons : forall t e d,
+     val e ->
+     typ_exp e t ->
+     typ_delta d ->
+     typ_delta ((t,e)::d).
+
 Inductive typ_stmt : stmt -> Prop :=
  | styp_move : forall (x:var) (e:exp) (t:typ),
      typ_exp (exp_var x) t ->
@@ -200,309 +204,307 @@ Definition succ (w : word) :=
   let (val,sz) := w in (val+1,sz).
 
 Inductive step_exp : delta -> exp -> exp -> Prop :=
- | estep_var_in : forall (d:delta) (n : nat) (t : typ) (v:exp),
-      wf_delta d
-   -> nth_error d x = Some v
-   -> step_exp d (exp_var x) v
+ | estep_var_in : forall (d:delta) (n : nat) (t t' : typ) (v:exp),
+     nth_error d n = Some (t',v) ->
+     step_exp d (exp_var (n,t)) v
+ | estep_var_unknown : forall (d:delta) (n : nat) (t : typ),
+     nth_error d n = None -> 
+     step_exp d (exp_var  (n, t)) (exp_unk "unbound variable" t)
+ | estep_load_step_addr : forall (d:delta) (e1 e2:exp) (endn:endian) (sz:nat) (e2':exp),
+     step_exp d e2 e2' ->
+     step_exp d (exp_load e1 e2 endn sz) (exp_load e1 e2' endn sz)
+ | estep_load_step_mem : forall (d:delta) (e1 v2:exp) (endn:endian) (sz:nat) (e1':exp),
+     val v2 ->
+     step_exp d e1 e1' ->
+     step_exp d (exp_load e1 v2 endn sz) (exp_load e1' v2 endn sz)
+ | estep_load_byte : forall (d:delta) (v1:exp) (w_addr:word) (endn endn':endian) (data : nat),
+     val v1 ->
+     step_exp d (exp_load (exp_store v1 (exp_imm w_addr) endn 8 (exp_imm (data,8)))
+                          (exp_imm w_addr) endn' 8)
+                (exp_imm (data,8))
+ | estep_load_un_addr : forall (d:delta) (v1:exp) (str:string) (t:typ) (endn:endian) (v2 v3:exp),
+     val v1 ->
+     val v2 ->
+     val v3 ->
+     step_exp d (exp_load ((exp_store v1 (exp_unk str t) endn 8 v2)) v3 endn 8)
+                (exp_unk str (typ_imm 8))
+ | estep_load_rec : forall (d:delta) (v1:exp) (w1 w2:word) (endn:endian) (v3:exp),
+     val v1 ->
+     val v3 ->
+     w1 <> w2 ->
+     step_exp d (exp_load ((exp_store v1 (exp_imm w1) endn 8 v3))
+                          (exp_imm w2) endn 8)
+                (exp_load v1 (exp_imm w2) endn 8)
+ | estep_load_un_mem : forall (d:delta) (str:string) (t : typ) (v3:exp) (endn:endian) (sz:nat),
+     val v3 ->
+     step_exp d (exp_load (exp_unk str t) v3 endn sz) (exp_unk str (typ_imm sz))
 .
- | var_unknown : forall (delta5:delta) (id5:id) (typ5:typ) (str:string),
-     is_delta_of_delta delta5 ->
-      not (In   ( id5 , typ5 )    dom(delta)  ->
-     exp delta5 (exp_var  ( id5 , typ5 ) ) (exp_unk str typ5)
- | load_step_addr : forall (delta5:delta) (e1 e2:exp) (ed:endian) (sz:nat) (e2':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e2 e2' ->
-     exp delta5 (exp_load e1 e2 ed sz) (exp_load e1 e2' ed sz)
- | load_step_mem : forall (delta5:delta) (e1 v2:exp) (ed:endian) (sz:nat) (e1':exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v2 ->
-     exp delta5 e1 e1' ->
-     exp delta5 (exp_load e1 v2 ed sz) (exp_load e1' v2 ed sz)
- | load_byte : forall (delta5:delta) (v1:exp) (w:word) (ed:endian) (num5:num) (ed':endian),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v1 ->
-     exp delta5 (exp_load  ( (exp_store v1 (exp_int w) ed  8  (exp_int  num5 )) )  (exp_int w) ed'  8 ) (exp_int  num5 )
- | load_un_addr : forall (delta5:delta) (v1:exp) (str:string) (t:typ) (ed:endian) (v2 v3:exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v1 ->
-     is_val_of_exp v2 ->
-     is_val_of_exp v3 ->
-     exp delta5 (exp_load  ( (exp_store v1 (exp_unk str t) ed  8  v2) )  v3 ed  8 ) (exp_unk str (typ_imm  8 ))
- | load_rec : forall (delta5:delta) (v1:exp) (w1:word) (ed:endian) (v3:exp) (w2:word),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v1 ->
-     is_val_of_exp v3 ->
-      ( (exp_int w1)  <>  (exp_int w2) )  ->
-     exp delta5 (exp_load  ( (exp_store v1 (exp_int w1) ed  8  v3) )  (exp_int w2) ed  8 ) (exp_load v1 (exp_int w2) ed  8 )
- | load_un_mem : forall (delta5:delta) (str:string) (nat5 sz:nat),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_unk str (typ_mem nat5 sz)) (exp_unk str (typ_imm sz))
- | load_word_be : forall (delta5:delta) (v:exp) (w:word) (sz:nat) (w':word),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v ->
-     succ w (exp_int w') ->
-     exp delta5 (exp_load v (exp_int w) endian_big sz) (exp_concat (exp_load v (exp_int w) endian_big  8 )  ( (exp_load v (exp_int w') endian_big  (  sz  -   8   ) ) ) )
- | load_word_el : forall (delta5:delta) (v:exp) (w:word) (sz:nat) (w':word),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v ->
-     succ w (exp_int w') ->
-     exp delta5 (exp_load v (exp_int w) endian_little sz) (exp_concat (exp_load v (exp_int w') endian_little  (  sz  -   8   ) )  ( (exp_load v (exp_int w) endian_big  8 ) ) )
- | store_step_val : forall (delta5:delta) (e1 e2:exp) (ed:endian) (sz:nat) (e3 e3':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e3 e3' ->
-     exp delta5 (exp_store e1 e2 ed sz e3) (exp_store e1 e2 ed sz e3')
- | store_step_addr : forall (delta5:delta) (e1 e2:exp) (ed:endian) (sz:nat) (v3 e2':exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v3 ->
-     exp delta5 e2 e2' ->
-     exp delta5 (exp_store e1 e2 ed sz v3) (exp_store e1 e2' ed sz v3)
- | store_step_mem : forall (delta5:delta) (e1 v2:exp) (ed:endian) (sz:nat) (v3 e1':exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v2 ->
-     is_val_of_exp v3 ->
-     exp delta5 e1 e1' ->
-     exp delta5 (exp_store e1 v2 ed sz v3) (exp_store e1' v2 ed sz v3)
- | store_word_be : forall (delta5:delta) (v:exp) (w:word) (sz:nat) (val5 e1:exp) (w':word),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v ->
-     is_val_of_exp val5 ->
-     succ w (exp_int w') ->
-      let  e1  =   ( (exp_store v (exp_int w) endian_big  8  (exp_cast cast_high  8  val5)) )   in  ->
-     exp delta5 (exp_store v (exp_int w) endian_big sz val5) (exp_store e1 (exp_int w') endian_big  (  sz  -   8   )  (exp_cast cast_low  (  sz  -   8   )  val5))
- | store_word_el : forall (delta5:delta) (v:exp) (w:word) (sz:nat) (val5 e1:exp) (w':word),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v ->
-     is_val_of_exp val5 ->
-     succ w (exp_int w') ->
-      let  e1  =   ( (exp_store v (exp_int w) endian_little  8  (exp_cast cast_low  8  val5)) )   in  ->
-     exp delta5 (exp_store v (exp_int w) endian_little sz val5) (exp_store e1 (exp_int w') endian_little  (  sz  -   8   )  (exp_cast cast_high  (  sz  -   8   )  val5))
- | let_step : forall (delta5:delta) (var5:var) (e1 e2 e1':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e1 e1' ->
-     exp delta5 (exp_let var5 e1 e2) (exp_let var5 e1' e2)
- | let : forall (delta5:delta) (var5:var) (v e:exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v ->
-     exp delta5 (exp_let var5 v e)  subst_exp_exp  v   var5   e 
- | ite_step : forall (delta5:delta) (e1 e2 e3 e1':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e1 e1' ->
-     exp delta5 (exp_ite e1 e2 e3) (exp_ite e1' e2 e3)
- | ite_true : forall (delta5:delta) (e2 e3:exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_ite (exp_int  1 ) e2 e3) e2
- | ite_false : forall (delta5:delta) (e2 e3:exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_ite (exp_int  0 ) e2 e3) e3
- | bop_rhs : forall (delta5:delta) (e1:exp) (bop5:bop) (e2 e2':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e2 e2' ->
-     exp delta5 (exp_binop e1 bop5 e2) (exp_binop e1 bop5 e2')
- | bop_lhs : forall (delta5:delta) (e1:exp) (bop5:bop) (v2 e1':exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v2 ->
-     exp delta5 e1 e1' ->
-     exp delta5 (exp_binop e1 bop5 v2) (exp_binop e1' bop5 v2)
- | bop_unk_rhs : forall (delta5:delta) (e:exp) (bop5:bop) (str:string) (t:typ),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop e bop5 (exp_unk str t)) (exp_unk str t)
- | bop_unk_lhs : forall (delta5:delta) (str:string) (t:typ) (bop5:bop) (e:exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_unk str t) bop5 e) (exp_unk str t)
- | plus : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_plus (exp_int w2)) (exp_int  w1  +  w2 )
- | minus : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_minus (exp_int w2)) (exp_int  w1  -  w2 )
- | times : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_times (exp_int w2)) (exp_int  w1  *  w2 )
- | div : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_divide (exp_int w2)) (exp_int  div  w1   w2 )
- | sdiv : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_sdivide (exp_int w2)) (exp_int  undefined_word )
- | mod : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_mod (exp_int w2)) (exp_int  w1  mod  w2 )
- | smod : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_smod (exp_int w2)) (exp_int  undefined_word )
- | lsl : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_lshift (exp_int w2)) (exp_int  w1  * (2 ^  w2 ) )
- | lsr : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_rshift (exp_int w2)) (exp_int  w1  / (2 ^  w2 ) )
- | asr : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_arshift (exp_int w2)) (exp_int  undefined_word )
- | land : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_and (exp_int w2)) (exp_int  undefined_word )
- | lor : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_or (exp_int w2)) (exp_int  undefined_word )
- | xor : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_xor (exp_int w2)) (exp_int  undefined_word )
- | eq : forall (delta5:delta) (w:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w) binop_eq (exp_int w)) (exp_int  1 )
- | neq : forall (delta5:delta) (w:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w) binop_neq (exp_int w)) (exp_int  0 )
- | less : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_lt (exp_int w2)) (exp_int  undefined_word )
- | less_eq : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_le (exp_int w2)) (exp_binop  ( (exp_binop (exp_int w1) binop_lt (exp_int w2)) )  binop_or  ( (exp_binop (exp_int w1) binop_eq (exp_int w2)) ) )
- | signed_less : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_slt (exp_int w2)) (exp_int  undefined_word )
- | signed_less_eq : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_binop (exp_int w1) binop_sle (exp_int w2)) (exp_binop  ( (exp_binop (exp_int w1) binop_eq (exp_int w2)) )  binop_and  ( (exp_binop (exp_int w1) binop_slt (exp_int w2)) ) )
- | uop : forall (delta5:delta) (uop5:uop) (e e':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e e' ->
-     exp delta5 (exp_unop uop5 e) (exp_unop uop5 e')
- | not_true : forall (delta5:delta),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_unop unop_not (exp_int  1 )) (exp_int  0 )
- | not_false : forall (delta5:delta),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_unop unop_not (exp_int  0 )) (exp_int  1 )
- | concat_rhs : forall (delta5:delta) (e1 e2 e2':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e2 e2' ->
-     exp delta5 (exp_concat e1 e2) (exp_concat e1 e2')
- | concat_lhs : forall (delta5:delta) (e1 v2 e1':exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v2 ->
-     exp delta5 e1 e1' ->
-     exp delta5 (exp_concat e1 v2) (exp_concat e1' v2)
- | concat_lhs_un : forall (delta5:delta) (str:string) (t:typ) (v2:exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v2 ->
-     exp delta5 (exp_concat (exp_unk str t) v2) (exp_unk str t)
- | concat_rhs_un : forall (delta5:delta) (v1:exp) (str:string) (t:typ),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v1 ->
-     exp delta5 (exp_concat v1 (exp_unk str t)) (exp_unk str t)
- | concat : forall (delta5:delta) (w1 w2:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_concat (exp_int w1) (exp_int w2)) (exp_int  undefined_word )
- | extract_reduce : forall (delta5:delta) (sz1 sz2:nat) (e e':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e e' ->
-     exp delta5 (exp_ext sz1 sz2 e) (exp_ext sz1 sz2 e')
- | extract_un : forall (delta5:delta) (sz1 sz2:nat) (str:string) (t:typ),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_ext sz1 sz2 (exp_unk str t)) (exp_unk str t)
- | extract : forall (delta5:delta) (sz1 sz2:nat) (w:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_ext sz1 sz2 (exp_int w)) (exp_int  undefined_word )
- | cast_reduce : forall (delta5:delta) (cast5:cast) (sz:nat) (e e':exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e e' ->
-     exp delta5 (exp_cast cast5 sz e) (exp_cast cast5 sz e')
- | cast_low : forall (delta5:delta) (sz:nat) (w:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_cast cast_low sz (exp_int w)) (exp_int  undefined_word )
- | cast_high : forall (delta5:delta) (sz:nat) (num5:num) (sz':nat),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_cast cast_high sz (exp_int  num5 )) (exp_int  undefined_word )
- | cast_signed : forall (delta5:delta) (sz:nat) (w:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_cast cast_signed sz (exp_int w)) (exp_int  undefined_word )
- | cast_unsigned : forall (delta5:delta) (sz:nat) (w:word),
-     is_delta_of_delta delta5 ->
-     exp delta5 (exp_cast cast_unsinged sz (exp_int w)) (exp_cast cast_low sz (exp_int w)).
+ | load_word_be : forall (d:delta) (v:exp) (w:word) (sz:nat) (w':word),
+     is_delta_of_delta d ->
+     val v ->
+     succ w (exp_imm w') ->
+     step_exp d (exp_load v (exp_imm w) endian_big sz) (exp_concat (exp_load v (exp_imm w) endian_big  8 )  ( (exp_load v (exp_imm w') endian_big  (  sz  -   8   ) ) ) )
+ | load_word_el : forall (d:delta) (v:exp) (w:word) (sz:nat) (w':word),
+     is_delta_of_delta d ->
+     val v ->
+     succ w (exp_imm w') ->
+     step_exp d (exp_load v (exp_imm w) endian_little sz) (exp_concat (exp_load v (exp_imm w') endian_little  (  sz  -   8   ) )  ( (exp_load v (exp_imm w) endian_big  8 ) ) )
+ | store_step_val : forall (d:delta) (e1 e2:exp) (endn:endian) (sz:nat) (e3 e3':exp),
+     is_delta_of_delta d ->
+     step_exp d e3 e3' ->
+     step_exp d (exp_store e1 e2 endn sz e3) (exp_store e1 e2 endn sz e3')
+ | store_step_addr : forall (d:delta) (e1 e2:exp) (endn:endian) (sz:nat) (v3 e2':exp),
+     is_delta_of_delta d ->
+     val v3 ->
+     step_exp d e2 e2' ->
+     step_exp d (exp_store e1 e2 endn sz v3) (exp_store e1 e2' endn sz v3)
+ | store_step_mem : forall (d:delta) (e1 v2:exp) (endn:endian) (sz:nat) (v3 e1':exp),
+     is_delta_of_delta d ->
+     val v2 ->
+     val v3 ->
+     step_exp d e1 e1' ->
+     step_exp d (exp_store e1 v2 endn sz v3) (exp_store e1' v2 endn sz v3)
+ | store_word_be : forall (d:delta) (v:exp) (w:word) (sz:nat) (val5 e1:exp) (w':word),
+     is_delta_of_delta d ->
+     val v ->
+     val val5 ->
+     succ w (exp_imm w') ->
+      let  e1  =   ( (exp_store v (exp_imm w) endian_big  8  (exp_cast cast_high  8  val5)) )   in  ->
+     step_exp d (exp_store v (exp_imm w) endian_big sz val5) (exp_store e1 (exp_imm w') endian_big  (  sz  -   8   )  (exp_cast cast_low  (  sz  -   8   )  val5))
+ | store_word_el : forall (d:delta) (v:exp) (w:word) (sz:nat) (val5 e1:exp) (w':word),
+     is_delta_of_delta d ->
+     val v ->
+     val val5 ->
+     succ w (exp_imm w') ->
+      let  e1  =   ( (exp_store v (exp_imm w) endian_little  8  (exp_cast cast_low  8  val5)) )   in  ->
+     step_exp d (exp_store v (exp_imm w) endian_little sz val5) (exp_store e1 (exp_imm w') endian_little  (  sz  -   8   )  (exp_cast cast_high  (  sz  -   8   )  val5))
+ | let_step : forall (d:delta) (var5:var) (e1 e2 e1':exp),
+     is_delta_of_delta d ->
+     step_exp d e1 e1' ->
+     step_exp d (exp_let var5 e1 e2) (exp_let var5 e1' e2)
+ | let : forall (d:delta) (var5:var) (v e:exp),
+     is_delta_of_delta d ->
+     val v ->
+     step_exp d (exp_let var5 v e)  subst_exp_exp  v   var5   e 
+ | ite_step : forall (d:delta) (e1 e2 e3 e1':exp),
+     is_delta_of_delta d ->
+     step_exp d e1 e1' ->
+     step_exp d (exp_ite e1 e2 e3) (exp_ite e1' e2 e3)
+ | ite_true : forall (d:delta) (e2 e3:exp),
+     is_delta_of_delta d ->
+     step_exp d (exp_ite (exp_imm  1 ) e2 e3) e2
+ | ite_false : forall (d:delta) (e2 e3:exp),
+     is_delta_of_delta d ->
+     step_exp d (exp_ite (exp_imm  0 ) e2 e3) e3
+ | bop_rhs : forall (d:delta) (e1:exp) (bop5:bop) (e2 e2':exp),
+     is_delta_of_delta d ->
+     step_exp d e2 e2' ->
+     step_exp d (exp_binop e1 bop5 e2) (exp_binop e1 bop5 e2')
+ | bop_lhs : forall (d:delta) (e1:exp) (bop5:bop) (v2 e1':exp),
+     is_delta_of_delta d ->
+     val v2 ->
+     step_exp d e1 e1' ->
+     step_exp d (exp_binop e1 bop5 v2) (exp_binop e1' bop5 v2)
+ | bop_unk_rhs : forall (d:delta) (e:exp) (bop5:bop) (str:string) (t:typ),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop e bop5 (exp_unk str t)) (exp_unk str t)
+ | bop_unk_lhs : forall (d:delta) (str:string) (t:typ) (bop5:bop) (e:exp),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_unk str t) bop5 e) (exp_unk str t)
+ | plus : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_plus (exp_imm w2)) (exp_imm  w1  +  w2 )
+ | minus : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_minus (exp_imm w2)) (exp_imm  w1  -  w2 )
+ | times : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_times (exp_imm w2)) (exp_imm  w1  *  w2 )
+ | div : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_divide (exp_imm w2)) (exp_imm  div  w1   w2 )
+ | sdiv : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_sdivide (exp_imm w2)) (exp_imm  undefined_word )
+ | mod : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_mod (exp_imm w2)) (exp_imm  w1  mod  w2 )
+ | smod : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_smod (exp_imm w2)) (exp_imm  undefined_word )
+ | lsl : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_lshift (exp_imm w2)) (exp_imm  w1  * (2 ^  w2 ) )
+ | lsr : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_rshift (exp_imm w2)) (exp_imm  w1  / (2 ^  w2 ) )
+ | asr : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_arshift (exp_imm w2)) (exp_imm  undefined_word )
+ | land : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_and (exp_imm w2)) (exp_imm  undefined_word )
+ | lor : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_or (exp_imm w2)) (exp_imm  undefined_word )
+ | xor : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_xor (exp_imm w2)) (exp_imm  undefined_word )
+ | eq : forall (d:delta) (w:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w) binop_eq (exp_imm w)) (exp_imm  1 )
+ | neq : forall (d:delta) (w:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w) binop_neq (exp_imm w)) (exp_imm  0 )
+ | less : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_lt (exp_imm w2)) (exp_imm  undefined_word )
+ | less_eq : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_le (exp_imm w2)) (exp_binop  ( (exp_binop (exp_imm w1) binop_lt (exp_imm w2)) )  binop_or  ( (exp_binop (exp_imm w1) binop_eq (exp_imm w2)) ) )
+ | signed_less : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_slt (exp_imm w2)) (exp_imm  undefined_word )
+ | signed_less_eq : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_binop (exp_imm w1) binop_sle (exp_imm w2)) (exp_binop  ( (exp_binop (exp_imm w1) binop_eq (exp_imm w2)) )  binop_and  ( (exp_binop (exp_imm w1) binop_slt (exp_imm w2)) ) )
+ | uop : forall (d:delta) (uop5:uop) (e e':exp),
+     is_delta_of_delta d ->
+     step_exp d e e' ->
+     step_exp d (exp_unop uop5 e) (exp_unop uop5 e')
+ | not_true : forall (d:delta),
+     is_delta_of_delta d ->
+     step_exp d (exp_unop unop_not (exp_imm  1 )) (exp_imm  0 )
+ | not_false : forall (d:delta),
+     is_delta_of_delta d ->
+     step_exp d (exp_unop unop_not (exp_imm  0 )) (exp_imm  1 )
+ | concat_rhs : forall (d:delta) (e1 e2 e2':exp),
+     is_delta_of_delta d ->
+     step_exp d e2 e2' ->
+     step_exp d (exp_concat e1 e2) (exp_concat e1 e2')
+ | concat_lhs : forall (d:delta) (e1 v2 e1':exp),
+     is_delta_of_delta d ->
+     val v2 ->
+     step_exp d e1 e1' ->
+     step_exp d (exp_concat e1 v2) (exp_concat e1' v2)
+ | concat_lhs_un : forall (d:delta) (str:string) (t:typ) (v2:exp),
+     is_delta_of_delta d ->
+     val v2 ->
+     step_exp d (exp_concat (exp_unk str t) v2) (exp_unk str t)
+ | concat_rhs_un : forall (d:delta) (v1:exp) (str:string) (t:typ),
+     is_delta_of_delta d ->
+     val v1 ->
+     step_exp d (exp_concat v1 (exp_unk str t)) (exp_unk str t)
+ | concat : forall (d:delta) (w1 w2:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_concat (exp_imm w1) (exp_imm w2)) (exp_imm  undefined_word )
+ | extract_reduce : forall (d:delta) (sz1 sz2:nat) (e e':exp),
+     is_delta_of_delta d ->
+     step_exp d e e' ->
+     step_exp d (exp_ext sz1 sz2 e) (exp_ext sz1 sz2 e')
+ | extract_un : forall (d:delta) (sz1 sz2:nat) (str:string) (t:typ),
+     is_delta_of_delta d ->
+     step_exp d (exp_ext sz1 sz2 (exp_unk str t)) (exp_unk str t)
+ | extract : forall (d:delta) (sz1 sz2:nat) (w:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_ext sz1 sz2 (exp_imm w)) (exp_imm  undefined_word )
+ | cast_reduce : forall (d:delta) (cast5:cast) (sz:nat) (e e':exp),
+     is_delta_of_delta d ->
+     step_exp d e e' ->
+     step_exp d (exp_cast cast5 sz e) (exp_cast cast5 sz e')
+ | cast_low : forall (d:delta) (sz:nat) (w:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_cast cast_low sz (exp_imm w)) (exp_imm  undefined_word )
+ | cast_high : forall (d:delta) (sz:nat) (num5:num) (sz':nat),
+     is_delta_of_delta d ->
+     step_exp d (exp_cast cast_high sz (exp_imm  num5 )) (exp_imm  undefined_word )
+ | cast_signed : forall (d:delta) (sz:nat) (w:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_cast cast_signed sz (exp_imm w)) (exp_imm  undefined_word )
+ | cast_unsigned : forall (d:delta) (sz:nat) (w:word),
+     is_delta_of_delta d ->
+     step_exp d (exp_cast cast_unsinged sz (exp_imm w)) (exp_cast cast_low sz (exp_imm w)).
 (** definitions *)
 
 (* defns reduce_stmt *)
 Inductive stmt : delta -> word -> stmt -> delta -> word -> Prop :=    (* defn stmt *)
- | move : forall (delta5:delta) (w:word) (var5:var) (e v:exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v ->
-     mexp delta5 e v ->
-     stmt delta5 w (stmt_move var5 e) (delta_cons delta5 var5 v) w
- | jmp : forall (delta5:delta) (w:word) (e:exp) (w':word),
-     is_delta_of_delta delta5 ->
-     mexp delta5 e (exp_int w') ->
-     stmt delta5 w (stmt_jump e) delta5 w'
- | cpuexn : forall (delta5:delta) (w:word) (num5:num),
-     is_delta_of_delta delta5 ->
-     stmt delta5 w (stmt_cpuexn num5) delta5 w
- | special : forall (delta5:delta) (w:word) (str:string),
-     is_delta_of_delta delta5 ->
-     stmt delta5 w (stmt_special str) delta5 w
- | ifthen_true : forall (delta5:delta) (word5:word) (e:exp) (seq:bil) (delta':delta) (word':word),
-     is_delta_of_delta delta5 ->
+ | move : forall (d:delta) (w:word) (var5:var) (e v:exp),
+     is_delta_of_delta d ->
+     val v ->
+     mexp d e v ->
+     stmt d w (stmt_move var5 e) (delta_cons d var5 v) w
+ | jmp : forall (d:delta) (w:word) (e:exp) (w':word),
+     is_delta_of_delta d ->
+     mexp d e (exp_imm w') ->
+     stmt d w (stmt_jump e) d w'
+ | cpuexn : forall (d:delta) (w:word) (num5:num),
+     is_delta_of_delta d ->
+     stmt d w (stmt_cpuexn num5) d w
+ | special : forall (d:delta) (w:word) (str:string),
+     is_delta_of_delta d ->
+     stmt d w (stmt_special str) d w
+ | ifthen_true : forall (d:delta) (word5:word) (e:exp) (seq:bil) (delta':delta) (word':word),
+     is_delta_of_delta d ->
      is_delta_of_delta delta' ->
-     mexp delta5 e (exp_int  1 ) ->
-     seq delta5 word5 seq delta' word' (seq_many Nil_list_stmt) ->
-     stmt delta5 word5 (stmt_ifthen e seq) delta' word'
- | if_true : forall (delta5:delta) (word5:word) (e:exp) (seq seq1:bil) (delta':delta) (word':word),
-     is_delta_of_delta delta5 ->
+     mexp d e (exp_imm  1 ) ->
+     seq d word5 seq delta' word' (seq_many Nil_list_stmt) ->
+     stmt d word5 (stmt_ifthen e seq) delta' word'
+ | if_true : forall (d:delta) (word5:word) (e:exp) (seq seq1:bil) (delta':delta) (word':word),
+     is_delta_of_delta d ->
      is_delta_of_delta delta' ->
-     mexp delta5 e (exp_int  1 ) ->
-     seq delta5 word5 seq delta' word' (seq_many Nil_list_stmt) ->
-     stmt delta5 word5 (stmt_if e seq seq1) delta' word'
- | if_false : forall (delta5:delta) (word5:word) (e:exp) (seq1 seq:bil) (delta':delta) (word':word),
-     is_delta_of_delta delta5 ->
+     mexp d e (exp_imm  1 ) ->
+     seq d word5 seq delta' word' (seq_many Nil_list_stmt) ->
+     stmt d word5 (stmt_if e seq seq1) delta' word'
+ | if_false : forall (d:delta) (word5:word) (e:exp) (seq1 seq:bil) (delta':delta) (word':word),
+     is_delta_of_delta d ->
      is_delta_of_delta delta' ->
-     mexp delta5 e (exp_int  0 ) ->
-     seq delta5 word5 seq delta' word' (seq_many Nil_list_stmt) ->
-     stmt delta5 word5 (stmt_if e seq1 seq) delta' word'
+     mexp d e (exp_imm  0 ) ->
+     seq d word5 seq delta' word' (seq_many Nil_list_stmt) ->
+     stmt d word5 (stmt_if e seq1 seq) delta' word'
  | while : forall (delta1:delta) (word1:word) (e:exp) (seq:bil) (delta3:delta) (word3:word) (delta2:delta) (word2:word),
      is_delta_of_delta delta1 ->
      is_delta_of_delta delta3 ->
      is_delta_of_delta delta2 ->
-     mexp delta1 e (exp_int  1 ) ->
+     mexp delta1 e (exp_imm  1 ) ->
      seq delta1 word1 seq delta2 word2 (seq_many Nil_list_stmt) ->
      stmt delta2 word2 (stmt_while e seq) delta3 word3 ->
      stmt delta1 word1 (stmt_while e seq) delta3 word3
- | while_false : forall (delta5:delta) (word5:word) (e:exp) (seq:bil),
-     is_delta_of_delta delta5 ->
-     mexp delta5 e (exp_int  0 ) ->
-     stmt delta5 word5 (stmt_while e seq) delta5 word5
+ | while_false : forall (d:delta) (word5:word) (e:exp) (seq:bil),
+     is_delta_of_delta d ->
+     mexp d e (exp_imm  0 ) ->
+     stmt d word5 (stmt_while e seq) d word5
 with seq : delta -> word -> bil -> delta -> word -> bil -> Prop :=    (* defn seq *)
- | seq_rec : forall (s_list:list_stmt) (UNK: NUM 1:UNK_CTP) (delta5:delta) (word5:word) (delta':delta) (word':word) (t103 t104:stmt),
+ | seq_rec : forall (s_list:list_stmt) (UNK: NUM 1:UNK_CTP) (d:delta) (word5:word) (delta':delta) (word':word) (t103 t104:stmt),
           nth_list_stmt (1 - 2) s_list = Some t103 ->
      nth_list_stmt (1 - 2) s_list = Some t104 ->
-is_delta_of_delta delta5 ->
+is_delta_of_delta d ->
      is_delta_of_delta delta' ->
-     stmt delta5 word5 t103 delta' word' ->
-     seq delta5 word5 (seq_many ((app_list_stmt (Cons_list_stmt t104 Nil_list_stmt) (app_list_stmt s_list Nil_list_stmt)))) delta' word' (seq_many s_list)
- | seq_last : forall (delta5:delta) (word5:word) (s1 s2:stmt) (delta':delta) (word':word),
-     is_delta_of_delta delta5 ->
+     stmt d word5 t103 delta' word' ->
+     seq d word5 (seq_many ((app_list_stmt (Cons_list_stmt t104 Nil_list_stmt) (app_list_stmt s_list Nil_list_stmt)))) delta' word' (seq_many s_list)
+ | seq_last : forall (d:delta) (word5:word) (s1 s2:stmt) (delta':delta) (word':word),
+     is_delta_of_delta d ->
      is_delta_of_delta delta' ->
-     stmt delta5 word5 s1 delta' word' ->
-     seq delta5 word5 (seq_many ((app_list_stmt (Cons_list_stmt s1 Nil_list_stmt) (app_list_stmt (Cons_list_stmt s2 Nil_list_stmt) Nil_list_stmt)))) delta' word' (seq_many (Cons_list_stmt s2 Nil_list_stmt))
- | seq_one : forall (delta5:delta) (word5:word) (s1:stmt) (delta':delta) (word':word),
-     is_delta_of_delta delta5 ->
+     stmt d word5 s1 delta' word' ->
+     seq d word5 (seq_many ((app_list_stmt (Cons_list_stmt s1 Nil_list_stmt) (app_list_stmt (Cons_list_stmt s2 Nil_list_stmt) Nil_list_stmt)))) delta' word' (seq_many (Cons_list_stmt s2 Nil_list_stmt))
+ | seq_one : forall (d:delta) (word5:word) (s1:stmt) (delta':delta) (word':word),
+     is_delta_of_delta d ->
      is_delta_of_delta delta' ->
-     stmt delta5 word5 s1 delta' word' ->
-     seq delta5 word5 (seq_many (Cons_list_stmt s1 Nil_list_stmt)) delta' word' (seq_many Nil_list_stmt)
- | seq_nil : forall (delta5:delta) (word5:word),
-     is_delta_of_delta delta5 ->
-     seq delta5 word5 (seq_many Nil_list_stmt) delta5 word5 (seq_many Nil_list_stmt).
+     stmt d word5 s1 delta' word' ->
+     seq d word5 (seq_many (Cons_list_stmt s1 Nil_list_stmt)) delta' word' (seq_many Nil_list_stmt)
+ | seq_nil : forall (d:delta) (word5:word),
+     is_delta_of_delta d ->
+     seq d word5 (seq_many Nil_list_stmt) d word5 (seq_many Nil_list_stmt).
 (** definitions *)
 
 (* defns multistep_exp *)
 Inductive mexp : delta -> exp -> exp -> Prop :=    (* defn mexp *)
- | refl : forall (delta5:delta) (e:exp),
-     is_delta_of_delta delta5 ->
-     mexp delta5 e e
- | reduce : forall (delta5:delta) (e1 e3 e2:exp),
-     is_delta_of_delta delta5 ->
-     exp delta5 e1 e2 ->
-     mexp delta5 e2 e3 ->
-     mexp delta5 e1 e3.
+ | refl : forall (d:delta) (e:exp),
+     is_delta_of_delta d ->
+     mexp d e e
+ | reduce : forall (d:delta) (e1 e3 e2:exp),
+     is_delta_of_delta d ->
+     step_exp d e1 e2 ->
+     mexp d e2 e3 ->
+     mexp d e1 e3.
 
 
