@@ -200,11 +200,10 @@ Definition succ (w : word) :=
   let (val,sz) := w in (val+1,sz).
 
 Inductive step_exp : delta -> exp -> exp -> Prop :=
- | estep_var_in : forall (d:delta) (var5:var) (v:exp),
-     is_delta_of_delta delta5 ->
-     is_val_of_exp v ->
-      In ( var5 , v )  delta5  ->
-      exp delta5 (exp_var var5) v
+ | estep_var_in : forall (d:delta) (n : nat) (t : typ) (v:exp),
+      wf_delta d
+   -> nth_error d x = Some v
+   -> step_exp d (exp_var x) v
 .
  | var_unknown : forall (delta5:delta) (id5:id) (typ5:typ) (str:string),
      is_delta_of_delta delta5 ->
